@@ -15,6 +15,7 @@ class ParcelGen:
     CLASS_STR = "/* package */ abstract class %s extends %s implements %s {"
     CHILD_CLASS_STR = "public class {0} extends _{0} {{"
     NATIVE_TYPES = ["string", "byte", "double", "float", "int", "long"]
+    NATIVE_OBJECTS = ["String", "Byte", "Double", "Float", "Integer", "Long"]
     JSON_IMPORTS = ["org.json.JSONException", "org.json.JSONObject"]
 
     tablevel = 0
@@ -70,7 +71,10 @@ class ParcelGen:
         elif classname == "String":
             return self.tabify("parcel.writeStringList(%s);" % memberized)
         else:
-            return self.tabify("parcel.writeTypedList(%s);" % memberized)
+            if self.list_type(typ) in self.NATIVE_OBJECTS:
+                return self.tabify("parcel.writeList(%s);" % memberized)
+            else:
+                return self.tabify("parcel.writeTypedList(%s);" % memberized)
 
     def gen_list_unparcel(self, typ, memberized):
         classname = self.list_type(typ)
@@ -79,7 +83,10 @@ class ParcelGen:
         if (classname == "String"):
             return self.tabify("%s = source.createStringArrayList();" % memberized)
         else:
-            return self.tabify("%s = source.createTypedArrayList(%s.CREATOR);" % (memberized, classname))
+            if self.list_type(typ) in self.NATIVE_OBJECTS:
+                return self.tabify("%s = (ArrayList<%s>) source.readSerializable();" % (memberized, classname))
+            else:
+                return self.tabify("%s = source.createTypedArrayList(%s.CREATOR);" % (memberized, classname))
 
     def gen_parcelable_line(self, typ, member):
         memberized = self.memberize(member)
@@ -330,6 +337,7 @@ class ParcelGen:
             # returns the string "null" for null strings.    AWESOME.
             protect = typ not in [native for native in NATIVES if native != "String"]
             for member in props[typ]:
+                newline = True
                 # Some object members are derived and not stored in JSON
                 if member in self.json_blacklist:
                     continue
@@ -356,10 +364,32 @@ class ParcelGen:
                 elif typ == "Uri":
                     fun += "Uri.parse(json.getString(\"%s\"))" % key
                 elif list_type:
-                    fun += "JsonUtil.parseJsonList(json.optJSONArray(\"%s\"), %s.CREATOR)" % (key, list_type)
+                    if list_type in self.NATIVE_OBJECTS:
+                        newline = False
+                        listmatcher = re.match(r"(?P<list_type>Array)?List(?P<content_type>[<>a-zA-Z0-9_]*)", typ)
+                        if listmatcher is not None:
+                            match_dict = listmatcher.groupdict()
+                            if match_dict['list_type'] is not None and match_dict['content_type'] is not None:
+                                fun += ("new %sList%s()" % (match_dict['list_type'], match_dict['content_type']))
+                            else:
+                                fun += "java.util.Collections.emptyList()"
+                            fun += ";\n"
+                        fun += self.tabify("JSONArray tmpArray = json.optJSONArray(\"%s\");\n" % key)
+                        fun += self.tabify("if (tmpArray != null) {\n")
+                        self.uptab()
+                        fun += self.tabify("for (int i=0; i<tmpArray.length(); i++) {\n")
+                        self.uptab()
+                        fun += self.tabify("%s.add((%s) tmpArray.get(i));\n" % (self.memberize(member), list_type))
+                        self.downtab()
+                        fun += self.tabify("}\n")
+                        self.downtab()
+                        fun += self.tabify("}\n")
+                    else:
+                        fun += "JsonUtil.parseJsonList(json.optJSONArray(\"%s\"), %s.CREATOR)" % (key, list_type)
                 else:
                     fun += "%s.CREATOR.parse(json.getJSONObject(\"%s\"))" % (typ, key)
-                fun += ";\n"
+                if newline:
+                    fun += ";\n"
                 if protect:
                     self.downtab()
                     listmatcher = re.match(r"(?P<list_type>Array)?List(?P<content_type>[<>a-zA-Z0-9_]*)", typ)
