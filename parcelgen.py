@@ -12,7 +12,7 @@ import sys, re, os.path, json
 
 class ParcelGen:
     BASE_IMPORTS = ("android.os.Parcel", "android.os.Parcelable")
-    CLASS_STR = "/* package */ abstract class %s implements %s {"
+    CLASS_STR = "/* package */ abstract class %s extends %s implements %s {"
     CHILD_CLASS_STR = "public class {0} extends _{0} {{"
     NATIVE_TYPES = ["string", "byte", "double", "float", "int", "long"]
     JSON_IMPORTS = ["org.json.JSONException", "org.json.JSONObject"]
@@ -172,7 +172,7 @@ class ParcelGen:
                 return True
         return False
 
-    def print_gen(self, props, class_name, package, imports, transient):
+    def print_gen(self, props, class_name, extends, constructors, package, imports, transient):
         self.props = props
         self.tablevel = 0
         # Imports and open class definition
@@ -209,7 +209,7 @@ class ParcelGen:
         implements = "Parcelable"
         if self.make_serializable:
             implements += ", Serializable"
-        self.printtab((self.CLASS_STR % (class_name, implements)) + "\n")
+        self.printtab((self.CLASS_STR % (class_name, extends, implements)) + "\n")
 
         # Protected member variables
         self.uptab()
@@ -234,11 +234,25 @@ class ParcelGen:
         self.printtab("}\n")
 
         # Empty constructor for Parcelable
-        self.printtab("protected %s() {" % class_name)
-        self.uptab()
-        self.printtab("super();")
-        self.downtab()
-        self.printtab("}\n")
+        for c in constructors:
+            constructor = "protected %s(" % class_name
+            params = []
+            values = []
+            
+            for item in c["args"]:
+                params.append("%s %s" % (item[0], item[1]))
+                values.append(item[1])
+                
+            if c.get("throws", None):
+                constructor += "%s) throws %s {" %(", ".join(params), ", ".join(c.get("throws")))
+            else:
+                constructor += "%s) {" % (", ".join(params))
+            
+            self.printtab(constructor)
+            self.uptab()        
+            self.printtab("super(%s);" % ", ".join(values))
+            self.downtab()
+            self.printtab("}\n")
     
         # Getters for member variables
         for typ, member in self.member_map():
@@ -427,6 +441,10 @@ def generate_class(filePath, output):
     else:
         do_json = False
     class_name = "_" + os.path.basename(filePath).split(".")[0]
+    
+    extends = description.get("extends") or "Object"
+    
+    constructors = description.get("constructors") or []
 
     generator = ParcelGen()
     generator.json_map = json_map
@@ -452,7 +470,7 @@ def generate_class(filePath, output):
                     generator.outfile = open(child_file, 'w')
                     generator.print_child(child, package)
         generator.outfile = open(targetFile, 'w')
-    generator.print_gen(props, class_name, package, imports, transient)
+    generator.print_gen(props, class_name, extends, constructors, package, imports, transient)
 
 
 if __name__ == "__main__":
