@@ -219,21 +219,30 @@ class ParcelGen:
             self.printtab("protected %s %s;" % (typ, self.memberize(member)))
         self.output("")
 
-        # Parameterized Constructor
-        constructor = "protected %s(" % class_name
-        params = []
-        for typ, member in self.member_map():
-            params.append("%s %s" % (typ, member))
-        constructor += "%s) {" % ", ".join(params)
-        self.printtab(constructor)
-        self.uptab()
-        self.printtab("this();")
-        for typ, member in self.member_map():
-            self.printtab("%s = %s;" % (self.memberize(member), member))
-        self.tablevel -= 1
-        self.printtab("}\n")
+        #If the user didn't define any constructors, put in parameterized and empty constructors
+        if not constructors:
+            # Parameterized Constructor
+            constructor = "protected %s(" % class_name
+            params = []
+            for typ, member in self.member_map():
+                params.append("%s %s" % (typ, member))
+            constructor += "%s) {" % ", ".join(params)
+            self.printtab(constructor)
+            self.uptab()
+            self.printtab("this();")
+            for typ, member in self.member_map():
+                self.printtab("%s = %s;" % (self.memberize(member), member))
+            self.tablevel -= 1
+            self.printtab("}\n")
+            
+            # Empty constructor for Parcelable
+            self.printtab("protected %s() {" % class_name)
+            self.uptab()
+            self.printtab("super();")
+            self.downtab()
+            self.printtab("}\n")
 
-        # Empty constructor for Parcelable
+        # User-defined constructors
         for c in constructors:
             constructor = "protected %s(" % class_name
             params = []
