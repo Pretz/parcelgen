@@ -14,8 +14,8 @@ class ParcelGen:
     BASE_IMPORTS = ("android.os.Parcel", "android.os.Parcelable")
     CLASS_STR = "/* package */ abstract class %s extends %s implements %s {"
     CHILD_CLASS_STR = "public class {0} extends _{0} {{"
-    NATIVE_TYPES = ["string", "byte", "double", "float", "int", "long"]
-    NATIVE_OBJECTS = ["String", "Byte", "Double", "Float", "Integer", "Long"]
+    NATIVE_TYPES = ["string", "byte", "double", "float", "int", "long", "boolean"]
+    NATIVE_OBJECTS = ["String", "Byte", "Double", "Float", "Integer", "Long", "Boolean"]
     JSON_IMPORTS = ["org.json.JSONException", "org.json.JSONObject"]
 
     tablevel = 0
@@ -92,6 +92,8 @@ class ParcelGen:
         memberized = self.memberize(member)
         if typ.lower() in self.NATIVE_TYPES:
             return self.tabify("parcel.write%s(%s);" % (typ.capitalize(), memberized))
+        elif typ == "Integer":
+            return self.tabify("parcel.writeInt(%s);" % memberized)
         elif typ == "Date":
             return self.tabify("parcel.writeLong(%s == null ? Integer.MIN_VALUE : %s.getTime());" % (
                 memberized, memberized))
@@ -310,6 +312,8 @@ class ParcelGen:
                         i += 1
                     elif typ.lower() in self.NATIVE_TYPES:
                         self.printtab("%s = source.read%s();" % (memberized, typ.capitalize()))
+                    elif typ == "Integer":
+                        self.printtab(("%s = source.readInt();" % memberized))
                     elif typ in self.serializables:
                         self.printtab("%s = (%s)source.readSerializable();" % (memberized, typ))
                     else:
@@ -357,6 +361,8 @@ class ParcelGen:
                     fun += "(float)json.optDouble(\"%s\")" % key
                 elif typ.lower() in NATIVES:
                     fun += "json.opt%s(\"%s\")" % (typ.capitalize(), key)
+                elif typ == "Integer":
+                    fun += "json.optInt(\"%s\")" % key
                 elif typ == "List<String>":
                     fun += "JsonUtil.getStringList(json.optJSONArray(\"%s\"))" % key
                 elif typ == "Date":
