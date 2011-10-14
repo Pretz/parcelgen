@@ -72,7 +72,7 @@ class ParcelGen:
             return self.tabify("parcel.writeStringList(%s);" % memberized)
         else:
             if self.list_type(typ) in self.NATIVE_OBJECTS:
-                return self.tabify("parcel.writeList(%s);" % memberized)
+                return self.tabify("parcel.writeSerializable(%s);" % memberized)
             else:
                 return self.tabify("parcel.writeTypedList(%s);" % memberized)
 
@@ -141,10 +141,11 @@ class ParcelGen:
             self.printtab("};\n")
             self.downtab()
 
-    def print_child(self, child_name, package):
+    def print_child(self, child_name, package, other_imports, constructors):
         self.tablevel = 0
         self.printtab("package %s;\n" % package)
         imports = ["android.os.Parcel"]
+        imports.extend(other_imports)
         if self.do_json:
             imports.extend(self.JSON_IMPORTS)
             imports.append("com.yelp.parcelgen.JsonParser.DualCreator")
@@ -156,6 +157,28 @@ class ParcelGen:
         self.printtab(self.CHILD_CLASS_STR.format(child_name))
         self.newline()
         self.uptab()
+        
+        # User-defined constructors
+        for c in constructors:
+            constructor = "public %s(" % child_name
+            params = []
+            values = []
+            
+            for item in c["args"]:
+                params.append("%s %s" % (item[0], item[1]))
+                values.append(item[1])
+                
+            if c.get("throws", None):
+                constructor += "%s) throws %s {" %(", ".join(params), ", ".join(c.get("throws")))
+            else:
+                constructor += "%s) {" % (", ".join(params))
+            
+            self.printtab(constructor)
+            self.uptab()        
+            self.printtab("super(%s);" % ", ".join(values))
+            self.downtab()
+            self.printtab("}\n")
+        
         if self.do_json:
             self.print_creator(child_name, "DualCreator", False)
             self.newline()
@@ -513,7 +536,7 @@ def generate_class(filePath, output):
                 child_file = os.path.join(output, *new_dirs)
                 if not os.path.exists(child_file):
                     generator.outfile = open(child_file, 'w')
-                    generator.print_child(child, package)
+                    generator.print_child(child, package, imports, constructors)
         generator.outfile = open(targetFile, 'w')
     generator.print_gen(props, class_name, extends, constructors, package, imports, transient)
 
