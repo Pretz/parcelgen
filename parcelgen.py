@@ -43,7 +43,7 @@ class ParcelGen:
         self.tablevel -= 1
 
     def memberize(self, name):
-        return "m%s%s" % (name[0].capitalize(), name[1:])
+        return "%s" % (name)
 
     def member_map(self):
         for typ in self.get_types():
@@ -92,8 +92,8 @@ class ParcelGen:
         memberized = self.memberize(member)
         if typ.lower() in self.NATIVE_TYPES:
             return self.tabify("parcel.write%s(%s);" % (typ.capitalize(), memberized))
-        elif typ == "Integer":
-            return self.tabify("parcel.writeInt(%s);" % memberized)
+        elif typ in self.NATIVE_OBJECTS:
+            return self.tabify("parcel.writeValue(%s);" % memberized)
         elif typ == "Date":
             return self.tabify("parcel.writeLong(%s == null ? Integer.MIN_VALUE : %s.getTime());" % (
                 memberized, memberized))
@@ -248,7 +248,7 @@ class ParcelGen:
         for typ, member in self.member_map():
             if member in transient:
                 typ = "transient " + typ
-            self.printtab("protected %s %s;" % (typ, self.memberize(member)))
+            self.printtab("public %s %s;" % (typ, self.memberize(member)))
         self.output("")
 
         #If the user didn't define any constructors, put in parameterized and empty constructors
@@ -335,8 +335,8 @@ class ParcelGen:
                         i += 1
                     elif typ.lower() in self.NATIVE_TYPES:
                         self.printtab("%s = source.read%s();" % (memberized, typ.capitalize()))
-                    elif typ == "Integer":
-                        self.printtab(("%s = source.readInt();" % memberized))
+                    elif typ in self.NATIVE_OBJECTS:
+                        self.printtab("%s = (%s) source.readValue(%s.class.getClassLoader());" % (memberized, typ, typ))
                     elif typ in self.serializables:
                         self.printtab("%s = (%s)source.readSerializable();" % (memberized, typ))
                     else:
