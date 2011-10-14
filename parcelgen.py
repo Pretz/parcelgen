@@ -90,7 +90,7 @@ class ParcelGen:
 
     def gen_parcelable_line(self, typ, member):
         memberized = self.memberize(member)
-        if typ.lower() in self.NATIVE_TYPES:
+        if typ in self.NATIVE_TYPES:
             return self.tabify("parcel.write%s(%s);" % (typ.capitalize(), memberized))
         elif typ in self.NATIVE_OBJECTS:
             return self.tabify("parcel.writeValue(%s);" % memberized)
@@ -333,7 +333,7 @@ class ParcelGen:
                         self.downtab()
                         self.printtab("}")
                         i += 1
-                    elif typ.lower() in self.NATIVE_TYPES:
+                    elif typ in self.NATIVE_TYPES:
                         self.printtab("%s = source.read%s();" % (memberized, typ.capitalize()))
                     elif typ in self.NATIVE_OBJECTS:
                         self.printtab("%s = (%s) source.readValue(%s.class.getClassLoader());" % (memberized, typ, typ))
