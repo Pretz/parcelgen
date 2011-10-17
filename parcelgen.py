@@ -43,7 +43,7 @@ class ParcelGen:
         self.tablevel -= 1
 
     def memberize(self, name):
-        return "%s" % (name)
+        return "m%s%s" % (name[0].capitalize(), name[1:])
 
     def member_map(self):
         for typ in self.get_types():
@@ -57,6 +57,14 @@ class ParcelGen:
         else:
             method_name = "get%s%s" % (member[0].capitalize(), member[1:])
         return "\tpublic %s %s() {\n\t\t return %s;\n\t}" % (typ, method_name, self.memberize(member))
+        
+    def gen_setter(self, typ, member):
+        method_name = ""
+        if typ == "boolean" and member.startswith("is"):
+            method_name = member
+        else:
+            method_name = "set%s%s" % (member[0].capitalize(), member[1:])
+        return "\tpublic void %s(%s %s) {\n\t\t this.%s = %s;\n\t}" % (method_name, typ, member, self.memberize(member), member)
 
     def list_type(self, typ):
         match = re.match(r"(List|ArrayList)<(.*)>", typ)
@@ -111,6 +119,8 @@ class ParcelGen:
 
     def gen_parcelable(self):
         result = ""
+        if self.extends != "Object":
+            result += self.tabify("super.writeToParcel(parcel, flags);\n");
         for typ in self.get_types():
             if typ == "boolean":
                 joined = ", ".join(map(self.memberize, self.props[typ]))
@@ -248,7 +258,7 @@ class ParcelGen:
         for typ, member in self.member_map():
             if member in transient:
                 typ = "transient " + typ
-            self.printtab("public %s %s;" % (typ, self.memberize(member)))
+            self.printtab("protected %s %s;" % (typ, self.memberize(member)))
         self.output("")
 
         #If the user didn't define any constructors, put in parameterized and empty constructors
@@ -298,6 +308,8 @@ class ParcelGen:
         # Getters for member variables
         for typ, member in self.member_map():
             self.output(self.gen_getter(typ, member))
+            self.output(self.gen_setter(typ, member))
+            self.output("\n")
         self.output("\n")
 
         # Parcelable writeToParcel
@@ -314,6 +326,8 @@ class ParcelGen:
         self.tablevel += 1
         i = 0
         all_members = []
+        if self.extends != "Object":
+            self.printtab("super.readFromParcel(source);")
         for typ in self.get_types():
             if typ == "boolean":
                 self.printtab("boolean[] bools = source.createBooleanArray();")
@@ -521,6 +535,7 @@ def generate_class(filePath, output):
     generator.do_json = do_json
     generator.do_json_writer = do_json_writer
     generator.make_serializable = make_serializable
+    generator.extends = extends
 
     generator.default_values = default_values
     if output:
