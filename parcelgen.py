@@ -1,13 +1,29 @@
 #!/usr/bin/env python
 
 import sys, re, os.path, json
+import argparse
+import yaml
+from collections import defaultdict
 
 # Parcelgen generates parcelable Java classes based
 # on a json dictionary of types and properties.  It generates
 # a class with the appropriate members and working
 # writeToParcel and readFromParcel methods.
 
-# Primary Author: Alex Pretzlav <pretz@yelp.com>
+# Primary Author: Alex Pretzlav <alex@pretzlav.com>
+
+
+class ObjectProperty(object):
+    """
+    A property of an ObjectDescription that includes its name (as returned by the API),
+    its type, an optional description, and an optional example value for the property.
+    """
+    def __init__(self, name, type_, description='', example='', collection=False):
+        self.name = name
+        self.type_ = type_
+        self.description = description
+        self.example = example
+        self.collection = collection
 
 
 class ParcelGen:
@@ -19,6 +35,20 @@ class ParcelGen:
 
     tablevel = 0
     outfile = None
+
+    def __init__(self):
+        self.props = {}
+        self.package = 'org.pretz.parcelgen'
+        self.do_json = True
+        self.imports = []
+        self.json_map = {}
+        self.default_values = {}
+        self.transient = []
+        self.do_json_writer = False
+        self.json_blacklist = []
+        self.serializables = []
+        self.implements = []
+        self.from_yaml = False
 
     def tabify(self, string):
         return ("\t" * self.tablevel) + string
@@ -172,13 +202,12 @@ class ParcelGen:
                 return True
         return False
 
-    def print_gen(self, props, class_name, package, imports, transient):
-        self.props = props
+    def print_gen(self, class_name):
         self.tablevel = 0
         # Imports and open class definition
-        self.printtab("package %s;\n" % package)
-        imports = set(tuple(imports) + self.BASE_IMPORTS)
-        for prop in props.keys():
+        self.printtab("package %s;\n" % self.package)
+        imports = set(tuple(self.imports) + self.BASE_IMPORTS)
+        for prop in self.props.keys():
             if prop.startswith("List"):
                 imports.add("java.util.List")
             elif prop.startswith("ArrayList"):
@@ -192,7 +221,7 @@ class ParcelGen:
             imports.update(self.JSON_IMPORTS)
             if self.needs_jsonutil():
                 imports.add("com.yelp.parcelgen.JsonUtil")
-        if self.make_serializable:
+        if 'Serializable' in self.implements:
             imports.add("java.io.Serializable")
         imports = list(imports)
         imports.sort()
@@ -206,15 +235,13 @@ class ParcelGen:
         self.printtab(" *    %s's PARCELABLE DESCRIPTION IS CHANGED." % class_name)
         self.printtab(" */")
 
-        implements = "Parcelable"
-        if self.make_serializable:
-            implements += ", Serializable"
+        implements = ", ".join(['Parcelable'] + self.implements)
         self.printtab((self.CLASS_STR % (class_name, implements)) + "\n")
 
         # Protected member variables
         self.uptab()
         for typ, member in self.member_map():
-            if member in transient:
+            if member in self.transient:
                 typ = "transient " + typ
             self.printtab("protected %s %s;" % (typ, self.memberize(member)))
         self.output("")
@@ -262,10 +289,10 @@ class ParcelGen:
         for typ in self.get_types():
             if typ == "boolean":
                 self.printtab("boolean[] bools = source.createBooleanArray();")
-                for j in xrange(len(props[typ])):
-                    self.printtab("%s = bools[%d];" % (self.memberize(props[typ][j]), j))
+                for j in xrange(len(self.props[typ])):
+                    self.printtab("%s = bools[%d];" % (self.memberize(self.props[typ][j]), j))
             else:
-                for member in props[typ]:
+                for member in self.props[typ]:
                     memberized = self.memberize(member)
                     list_gen = self.gen_list_unparcel(typ, memberized)
                     if list_gen:
@@ -289,9 +316,9 @@ class ParcelGen:
 #       self.print_creator(class_name, "Parcelable.Creator")
 
         if self.do_json:
-            self.output(self.generate_json_reader(props))
+            self.output(self.generate_json_reader(self.props))
         if self.do_json_writer:
-            self.output(self.generate_json_writer(props))
+            self.output(self.generate_json_writer(self.props))
         self.downtab()
         self.printtab("}")
 
@@ -404,16 +431,37 @@ class ParcelGen:
         fun += self.tabify("}\n")
         return fun
 
+
 def camel_to_under(member):
     """ Convert NamesInCamelCase to jsonic_underscore_names"""
     s1 = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', member)
     return re.sub('([a-z0-9])([A-Z])', r'\1_\2', s1).lower()
 
-def generate_class(filePath, output):
-    # Read parcelable description json
-    description = json.load(open(filePath, 'r'))
-    props = description.get("props") or {}
-    package = description.get("package") or None
+def under_to_camel(member):
+    """ Convert jsonic_underscore_names to namesInCamelCase"""
+    def upper(match):
+        return match.group(1).upper()
+    return re.sub('_([a-z0-9])', upper, member)
+
+def config_prop(dic, keypath, default=''):
+    paths = keypath.split('.')
+    for entry in paths:
+        if entry in dic:
+            dic = dic[entry]
+        else:
+            return default
+    return dic
+
+def read_json(file_path):
+    """
+    Returns a ParcelGen generator configured for the
+    the object described by the json file at file_path.
+    """
+    with open(file_path, 'rU') as json_file:
+        description = json.load(json_file)
+    generator = ParcelGen()
+    generator.props = description.get("props") or {}
+    generator.package = description.get("package") or None
     imports = description.get("imports") or ()
     json_map = description.get("json_map") or {}
     default_values = description.get("default_values") or {}
@@ -425,19 +473,102 @@ def generate_class(filePath, output):
     if 'do_json' in description:
         do_json = description.get("do_json")
     else:
-        do_json = False
-    class_name = "_" + os.path.basename(filePath).split(".")[0]
-
-    generator = ParcelGen()
+        do_json = True
+    # object_properties = []
+    # for type_, values in generator.props.iteritems():
+    #     for name in values:
+    #         object_properties.append(ObjectProperty(name, type_))
     generator.json_map = json_map
     generator.json_blacklist = json_blacklist
     generator.serializables = serializables
     generator.do_json = do_json
     generator.do_json_writer = do_json_writer
-    generator.make_serializable = make_serializable
-
+    if make_serializable:
+        generator.implements = ['Serializable']
+    else:
+        generator.implements = []
     generator.default_values = default_values
+    return generator
+
+
+def read_yaml(file_path, config_file):
+    yaml_to_java_types = {
+        'Integer': 'int',
+        'Boolean': 'boolean',
+        'Float': 'float',
+        'Long': 'long',
+        'Double': 'double',
+        'Url': 'Uri'
+    }
+    def process_yaml_node(typ, values):
+        typ = yaml_to_java_types.get(typ, typ)
+        if isinstance(values, dict):
+            for name, meta in values.iteritems():
+                if isinstance(meta, basestring):
+                    yield ObjectProperty(name, typ, description=meta)
+                else:
+                    yield ObjectProperty(name, typ, description=meta.get('desc'), example=meta.get('ex'))
+        else:
+            yield ObjectProperty(name, typ)
+    with open(file_path, 'rU') as yaml_file:
+        description = yaml.safe_load(yaml_file)
+    object_properties = []
+    for type_, values in description.iteritems():
+        if isinstance(values, dict):
+            object_properties.extend(process_yaml_node(type_, values))
+        else:
+            for value in values:
+                object_properties.extend(process_yaml_node(type_, value))
+    object_name = os.path.basename(file_path).split(".")[0]
+    generator = ParcelGen()
+    generator.from_yaml = True
+    rename = {}
+    if (config_file):
+        with open(config_file, 'rU') as yaml_config:
+            config = yaml.safe_load(yaml_config)
+        generator.package = config_prop(
+            config,
+            'Target.default_package',
+            default=generator.package)
+        obj_config = config.get('Config', {}).get(object_name, None)
+        if obj_config:
+            rename = obj_config.get('rename', rename)
+            generator.implements = obj_config.get('implement', [])
+            generator.transient.extend(obj_config.get('transient', []))
+            for prop in ['do_json_writer', 'serializables', 'json_blacklist', 'default_values', 'imports', 'package']:
+                if prop in obj_config:
+                    setattr(generator, prop, obj_config[prop])
+    # TODO: invert this and pass object properties into generator
+    props = defaultdict(list)
+    json_map = {}
+    for object_prop in object_properties:
+        type_ = object_prop.type_
+        if type_.endswith('[]'):
+            type_ = "ArrayList<%s>" % type_[:-2]
+        if object_prop.name in rename:
+            name = rename[object_prop.name]
+        else:
+            name = under_to_camel(object_prop.name)
+        json_map[name] = object_prop.name
+        props[type_].append(name)
+    # For compatibility, json_map contains every ivar->json mapping
+    generator.json_map = json_map
+    generator.props = props
+    return generator
+
+
+def generate_class(filePath, output, config=None):
+    # Read parcelable description json
+    if filePath.endswith('json'):
+        generator = read_json(filePath)
+    elif filePath.endswith('yaml'):
+        generator = read_yaml(filePath, config)
+    else:
+        raise Exception("Unsupported file type: %s" % filePath)
+    class_name = "_" + os.path.basename(filePath).split(".")[0]
+
     if output:
+        package = generator.package
         if (os.path.isdir(output)): # Resolve file location based on package + path
             dirs = package.split(".")
             dirs.append(class_name + ".java")
@@ -451,13 +582,14 @@ def generate_class(filePath, output):
                 if not os.path.exists(child_file):
                     generator.outfile = open(child_file, 'w')
                     generator.print_child(child, package)
+        else:
+            targetFile = output
         generator.outfile = open(targetFile, 'w')
-    generator.print_gen(props, class_name, package, imports, transient)
+    generator.print_gen(class_name)
 
 
 if __name__ == "__main__":
-    usage = """USAGE: %s parcelfile [destination]
-
+    usage = """
 Generates a parcelable Java implementation for provided description file.
 Writes to stdout unless destination is specified.
 
@@ -465,13 +597,15 @@ If destination is a directory, it is assumed to be the top level
 directory of your Java source. Your class file will be written in the
 appropriate folder based on its Java package.
 If destination is a file, your class will be written to that file."""
-    if len(sys.argv) < 2:
-        print(usage % sys.argv[0])
-        exit(0)
-    destination = None
-    if len(sys.argv) > 2:
-        destination = sys.argv[2]
-    source = sys.argv[1]
+    parser = argparse.ArgumentParser(description=usage)
+    parser.add_argument('parcelfile', help='The parcelable file or a directory of files to generate source from')
+    parser.add_argument('-c', '--config', help='Yaml config file to use while generating source code')
+    parser.add_argument('destination', nargs='?', help='Output file or directory for ' + 
+        'generated files, outputs to stdout if unspecified')
+    args = parser.parse_args()
+    source = args.parcelfile
+    destination = args.destination
+
     # If both source and destination are directories, run in
     # fake make mode
     if (os.path.isdir(source) and os.path.isdir(destination)):
@@ -479,5 +613,5 @@ If destination is a file, your class will be written to that file."""
             print "decoding ", sourcefile
             generate_class(os.path.join(source, sourcefile), destination)
     else:
-        generate_class(sys.argv[1], destination)
+        generate_class(source, destination, config=args.config)
 

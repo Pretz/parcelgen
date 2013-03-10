@@ -1,0 +1,37 @@
+Url:
+  - url:
+      desc: URL for business page on Yelp
+  - mobile_url:
+      desc: URL for mobile business page on Yelp
+String:
+  - id:
+      desc: Yelp ID for this business
+  - name:
+      desc: Name of this business
+  - image_url:
+      desc: URL of photo for this business
+  - phone:
+      desc: Phone number for this business with international dialing code (e.g. +442079460000)
+  - display_phone:
+      desc: Phone number for this business formatted for display
+  - rating_img_url:
+      desc: URL to star rating image for this business (size = 84x17)
+  - rating_img_url_small:
+      desc: URL to small version of rating image for this business (size = 50x10)
+  - snippet_text:
+      desc: Snippet text associated with this business
+  - snippet_image_url:
+      desc: URL of snippet image associated with this business
+Integer:
+  - review_count:
+      desc: Number of reviews for this business
+Double:
+  - distance:
+      desc: >
+        Distance that business is from search location in meters, if a latitude/longitude
+        is specified.
+  - rating:
+      desc: Rating for this business (value ranges from 1, 1.5, ... 4.5, 5)
+Location:
+  - location:
+      desc: Location data for this business

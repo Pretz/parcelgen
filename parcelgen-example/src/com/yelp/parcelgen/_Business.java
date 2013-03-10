@@ -3,14 +3,15 @@ package com.yelp.parcelgen;
 import android.net.Uri;
 import android.os.Parcel;
 import android.os.Parcelable;
+import java.io.Serializable;
 import org.json.JSONException;
 import org.json.JSONObject;
 
 /** Automatically generated Parcelable implementation for _Business.
- *  DO NOT MODIFY THIS FILE MANUALLY! IT WILL BE OVERWRITTEN THE NEXT TIME
- *  _Business's PARCELABLE DESCRIPTION IS CHANGED.
+ *    DO NOT MODIFY THIS FILE MANUALLY! IT WILL BE OVERWRITTEN THE NEXT TIME
+ *    _Business's PARCELABLE DESCRIPTION IS CHANGED.
  */
-/* package */ abstract class _Business implements Parcelable {
+/* package */ abstract class _Business implements Parcelable, Serializable {
 
 	protected Location mLocation;
 	protected String mId;
@@ -25,9 +26,10 @@ import org.json.JSONObject;
 	protected Uri mUri;
 	protected Uri mMobileUri;
 	protected double mDistance;
+	protected double mRating;
 	protected int mReviewCount;
 
-	protected _Business(Location location, String id, String name, String imageUrl, String phone, String displayPhone, String ratingImageUrl, String ratingImageUrlSmall, String snippetText, String snippetImageUrl, Uri uri, Uri mobileUri, double distance, int reviewCount) {
+	protected _Business(Location location, String id, String name, String imageUrl, String phone, String displayPhone, String ratingImageUrl, String ratingImageUrlSmall, String snippetText, String snippetImageUrl, Uri uri, Uri mobileUri, double distance, double rating, int reviewCount) {
 		this();
 		mLocation = location;
 		mId = id;
@@ -42,6 +44,7 @@ import org.json.JSONObject;
 		mUri = uri;
 		mMobileUri = mobileUri;
 		mDistance = distance;
+		mRating = rating;
 		mReviewCount = reviewCount;
 	}
 
@@ -88,6 +91,9 @@ import org.json.JSONObject;
 	public double getDistance() {
 		 return mDistance;
 	}
+	public double getRating() {
+		 return mRating;
+	}
 	public int getReviewCount() {
 		 return mReviewCount;
 	}
@@ -111,6 +117,7 @@ import org.json.JSONObject;
 		parcel.writeParcelable(mUri, 0);
 		parcel.writeParcelable(mMobileUri, 0);
 		parcel.writeDouble(mDistance);
+		parcel.writeDouble(mRating);
 		parcel.writeInt(mReviewCount);
 	}
 
@@ -128,6 +135,7 @@ import org.json.JSONObject;
 		mUri = source.readParcelable(Uri.class.getClassLoader());
 		mMobileUri = source.readParcelable(Uri.class.getClassLoader());
 		mDistance = source.readDouble();
+		mRating = source.readDouble();
 		mReviewCount = source.readInt();
 	}
 
@@ -169,6 +177,7 @@ import org.json.JSONObject;
 			mMobileUri = Uri.parse(json.getString("mobile_url"));
 		}
 		mDistance = json.optDouble("distance");
+		mRating = json.optDouble("rating");
 		mReviewCount = json.optInt("review_count");
 	}
 

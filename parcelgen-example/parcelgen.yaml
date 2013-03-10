@@ -1,0 +1,13 @@
+Target:
+  language: java
+  directory: src
+  default_package: com.yelp.parcelgen
+Config:
+  Business:
+    implement:
+      - Serializable
+    rename:
+      url: uri
+      mobile_url: mobileUri
+      rating_img_url: ratingImageUrl
+      rating_img_url_small: ratingImageUrlSmall
