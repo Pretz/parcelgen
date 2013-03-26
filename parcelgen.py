@@ -28,15 +28,17 @@ class ObjectProperty(object):
 
 class ParcelGen:
     BASE_IMPORTS = ("android.os.Parcel", "android.os.Parcelable")
-    CLASS_STR = "/* package */ abstract class %s implements %s {"
+    CLASS_STR = "/* package */ abstract class %s extends %s implements %s {"
     CHILD_CLASS_STR = "public class {0} extends _{0} {{"
-    NATIVE_TYPES = ["string", "byte", "double", "float", "int", "long"]
+    NATIVE_TYPES = ["string", "byte", "double", "float", "int", "long", "boolean"]
+    NATIVE_OBJECTS = ["String", "Byte", "Double", "Float", "Integer", "Long", "Boolean"]
     JSON_IMPORTS = ["org.json.JSONException", "org.json.JSONObject"]
 
     tablevel = 0
     outfile = None
 
     def __init__(self):
+        # Lots of default object properties, mostly empty
         self.props = {}
         self.package = 'org.pretz.parcelgen'
         self.do_json = True
@@ -44,6 +46,9 @@ class ParcelGen:
         self.json_map = {}
         self.default_values = {}
         self.transient = []
+        self.extends = "Object"
+        self.implements = []
+        self.constructors = []
         self.do_json_writer = False
         self.json_blacklist = []
         self.serializables = []
@@ -86,6 +91,14 @@ class ParcelGen:
         else:
             method_name = "get%s%s" % (member[0].capitalize(), member[1:])
         return "\tpublic %s %s() {\n\t\t return %s;\n\t}" % (typ, method_name, self.memberize(member))
+        
+    def gen_setter(self, typ, member):
+        method_name = ""
+        if typ == "boolean" and member.startswith("is"):
+            method_name = member
+        else:
+            method_name = "set%s%s" % (member[0].capitalize(), member[1:])
+        return "\tpublic void %s(%s %s) {\n\t\t this.%s = %s;\n\t}" % (method_name, typ, member, self.memberize(member), member)
 
     def list_type(self, typ):
         match = re.match(r"(List|ArrayList)<(.*)>", typ)
@@ -100,7 +113,10 @@ class ParcelGen:
         elif classname == "String":
             return self.tabify("parcel.writeStringList(%s);" % memberized)
         else:
-            return self.tabify("parcel.writeTypedList(%s);" % memberized)
+            if self.list_type(typ) in self.NATIVE_OBJECTS:
+                return self.tabify("parcel.writeSerializable(%s);" % memberized)
+            else:
+                return self.tabify("parcel.writeTypedList(%s);" % memberized)
 
     def gen_list_unparcel(self, typ, memberized):
         classname = self.list_type(typ)
@@ -109,12 +125,17 @@ class ParcelGen:
         if (classname == "String"):
             return self.tabify("%s = source.createStringArrayList();" % memberized)
         else:
-            return self.tabify("%s = source.createTypedArrayList(%s.CREATOR);" % (memberized, classname))
+            if self.list_type(typ) in self.NATIVE_OBJECTS:
+                return self.tabify("%s = (ArrayList<%s>) source.readSerializable();" % (memberized, classname))
+            else:
+                return self.tabify("%s = source.createTypedArrayList(%s.CREATOR);" % (memberized, classname))
 
     def gen_parcelable_line(self, typ, member):
         memberized = self.memberize(member)
-        if typ.lower() in self.NATIVE_TYPES:
+        if typ in self.NATIVE_TYPES:
             return self.tabify("parcel.write%s(%s);" % (typ.capitalize(), memberized))
+        elif typ in self.NATIVE_OBJECTS:
+            return self.tabify("parcel.writeValue(%s);" % memberized)
         elif typ == "Date":
             return self.tabify("parcel.writeLong(%s == null ? Integer.MIN_VALUE : %s.getTime());" % (
                 memberized, memberized))
@@ -132,6 +153,8 @@ class ParcelGen:
 
     def gen_parcelable(self):
         result = ""
+        if self.extends != "Object":
+            result += self.tabify("super.writeToParcel(parcel, flags);\n");
         for typ in self.get_types():
             if typ == "boolean":
                 joined = ", ".join(map(self.memberize, self.props[typ]))
@@ -162,10 +185,11 @@ class ParcelGen:
             self.printtab("};\n")
             self.downtab()
 
-    def print_child(self, child_name, package):
+    def print_child(self, child_name, package, other_imports, constructors):
         self.tablevel = 0
         self.printtab("package %s;\n" % package)
         imports = ["android.os.Parcel"]
+        imports.extend(other_imports)
         if self.do_json:
             imports.extend(self.JSON_IMPORTS)
             imports.append("com.yelp.parcelgen.JsonParser.DualCreator")
@@ -177,6 +201,28 @@ class ParcelGen:
         self.printtab(self.CHILD_CLASS_STR.format(child_name))
         self.newline()
         self.uptab()
+        
+        # User-defined constructors
+        for c in constructors:
+            constructor = "public %s(" % child_name
+            params = []
+            values = []
+            
+            for item in c["args"]:
+                params.append("%s %s" % (item[0], item[1]))
+                values.append(item[1])
+                
+            if c.get("throws", None):
+                constructor += "%s) throws %s {" %(", ".join(params), ", ".join(c.get("throws")))
+            else:
+                constructor += "%s) {" % (", ".join(params))
+            
+            self.printtab(constructor)
+            self.uptab()        
+            self.printtab("super(%s);" % ", ".join(values))
+            self.downtab()
+            self.printtab("}\n")
+        
         if self.do_json:
             self.print_creator(child_name, "DualCreator", False)
             self.newline()
@@ -236,7 +282,7 @@ class ParcelGen:
         self.printtab(" */")
 
         implements = ", ".join(['Parcelable'] + self.implements)
-        self.printtab((self.CLASS_STR % (class_name, implements)) + "\n")
+        self.printtab((self.CLASS_STR % (class_name, self.extends, implements)) + "\n")
 
         # Protected member variables
         self.uptab()
@@ -246,30 +292,55 @@ class ParcelGen:
             self.printtab("protected %s %s;" % (typ, self.memberize(member)))
         self.output("")
 
-        # Parameterized Constructor
-        constructor = "protected %s(" % class_name
-        params = []
-        for typ, member in self.member_map():
-            params.append("%s %s" % (typ, member))
-        constructor += "%s) {" % ", ".join(params)
-        self.printtab(constructor)
-        self.uptab()
-        self.printtab("this();")
-        for typ, member in self.member_map():
-            self.printtab("%s = %s;" % (self.memberize(member), member))
-        self.tablevel -= 1
-        self.printtab("}\n")
+        #If the user didn't define any constructors, put in parameterized and empty constructors
+        if not self.constructors:
+            # Parameterized Constructor
+            constructor = "protected %s(" % class_name
+            params = []
+            for typ, member in self.member_map():
+                params.append("%s %s" % (typ, member))
+            constructor += "%s) {" % ", ".join(params)
+            self.printtab(constructor)
+            self.uptab()
+            self.printtab("this();")
+            for typ, member in self.member_map():
+                self.printtab("%s = %s;" % (self.memberize(member), member))
+            self.tablevel -= 1
+            self.printtab("}\n")
+            
+            # Empty constructor for Parcelable
+            self.printtab("protected %s() {" % class_name)
+            self.uptab()
+            self.printtab("super();")
+            self.downtab()
+            self.printtab("}\n")
 
-        # Empty constructor for Parcelable
-        self.printtab("protected %s() {" % class_name)
-        self.uptab()
-        self.printtab("super();")
-        self.downtab()
-        self.printtab("}\n")
+        # User-defined constructors
+        for c in self.constructors:
+            constructor = "protected %s(" % class_name
+            params = []
+            values = []
+            
+            for item in c["args"]:
+                params.append("%s %s" % (item[0], item[1]))
+                values.append(item[1])
+                
+            if c.get("throws", None):
+                constructor += "%s) throws %s {" %(", ".join(params), ", ".join(c.get("throws")))
+            else:
+                constructor += "%s) {" % (", ".join(params))
+            
+            self.printtab(constructor)
+            self.uptab()        
+            self.printtab("super(%s);" % ", ".join(values))
+            self.downtab()
+            self.printtab("}\n")
     
         # Getters for member variables
         for typ, member in self.member_map():
             self.output(self.gen_getter(typ, member))
+            self.output(self.gen_setter(typ, member))
+            self.output("\n")
         self.output("\n")
 
         # Parcelable writeToParcel
@@ -286,6 +357,8 @@ class ParcelGen:
         self.tablevel += 1
         i = 0
         all_members = []
+        if self.extends != "Object":
+            self.printtab("super.readFromParcel(source);")
         for typ in self.get_types():
             if typ == "boolean":
                 self.printtab("boolean[] bools = source.createBooleanArray();")
@@ -305,8 +378,10 @@ class ParcelGen:
                         self.downtab()
                         self.printtab("}")
                         i += 1
-                    elif typ.lower() in self.NATIVE_TYPES:
+                    elif typ in self.NATIVE_TYPES:
                         self.printtab("%s = source.read%s();" % (memberized, typ.capitalize()))
+                    elif typ in self.NATIVE_OBJECTS:
+                        self.printtab("%s = (%s) source.readValue(%s.class.getClassLoader());" % (memberized, typ, typ))
                     elif typ in self.serializables:
                         self.printtab("%s = (%s)source.readSerializable();" % (memberized, typ))
                     else:
@@ -334,6 +409,7 @@ class ParcelGen:
             # returns the string "null" for null strings.    AWESOME.
             protect = typ not in [native for native in NATIVES if native != "String"]
             for member in props[typ]:
+                newline = True
                 # Some object members are derived and not stored in JSON
                 if member in self.json_blacklist:
                     continue
@@ -353,6 +429,8 @@ class ParcelGen:
                     fun += "(float)json.optDouble(\"%s\")" % key
                 elif typ.lower() in NATIVES:
                     fun += "json.opt%s(\"%s\")" % (typ.capitalize(), key)
+                elif typ == "Integer":
+                    fun += "json.optInt(\"%s\")" % key
                 elif typ == "List<String>":
                     fun += "JsonUtil.getStringList(json.optJSONArray(\"%s\"))" % key
                 elif typ == "Date":
@@ -360,10 +438,32 @@ class ParcelGen:
                 elif typ == "Uri":
                     fun += "Uri.parse(json.getString(\"%s\"))" % key
                 elif list_type:
-                    fun += "JsonUtil.parseJsonList(json.optJSONArray(\"%s\"), %s.CREATOR)" % (key, list_type)
+                    if list_type in self.NATIVE_OBJECTS:
+                        newline = False
+                        listmatcher = re.match(r"(?P<list_type>Array)?List(?P<content_type>[<>a-zA-Z0-9_]*)", typ)
+                        if listmatcher is not None:
+                            match_dict = listmatcher.groupdict()
+                            if match_dict['list_type'] is not None and match_dict['content_type'] is not None:
+                                fun += ("new %sList%s()" % (match_dict['list_type'], match_dict['content_type']))
+                            else:
+                                fun += "java.util.Collections.emptyList()"
+                            fun += ";\n"
+                        fun += self.tabify("JSONArray tmpArray = json.optJSONArray(\"%s\");\n" % key)
+                        fun += self.tabify("if (tmpArray != null) {\n")
+                        self.uptab()
+                        fun += self.tabify("for (int i=0; i<tmpArray.length(); i++) {\n")
+                        self.uptab()
+                        fun += self.tabify("%s.add((%s) tmpArray.get(i));\n" % (self.memberize(member), list_type))
+                        self.downtab()
+                        fun += self.tabify("}\n")
+                        self.downtab()
+                        fun += self.tabify("}\n")
+                    else:
+                        fun += "JsonUtil.parseJsonList(json.optJSONArray(\"%s\"), %s.CREATOR)" % (key, list_type)
                 else:
                     fun += "%s.CREATOR.parse(json.getJSONObject(\"%s\"))" % (typ, key)
-                fun += ";\n"
+                if newline:
+                    fun += ";\n"
                 if protect:
                     self.downtab()
                     listmatcher = re.match(r"(?P<list_type>Array)?List(?P<content_type>[<>a-zA-Z0-9_]*)", typ)
@@ -478,11 +578,17 @@ def read_json(file_path):
     # for type_, values in generator.props.iteritems():
     #     for name in values:
     #         object_properties.append(ObjectProperty(name, type_))
+
+    extends = description.get("extends") or "Object"    
+    constructors = description.get("constructors") or []
+
     generator.json_map = json_map
     generator.json_blacklist = json_blacklist
     generator.serializables = serializables
     generator.do_json = do_json
     generator.do_json_writer = do_json_writer
+    generator.extends = extends
+    generator.constructors = constructors
     if make_serializable:
         generator.implements = ['Serializable']
     else:
@@ -522,6 +628,7 @@ def read_yaml(file_path, config_file):
     object_name = os.path.basename(file_path).split(".")[0]
     generator = ParcelGen()
     generator.from_yaml = True
+    # Defaults to be overridden by config file
     rename = {}
     if (config_file):
         with open(config_file, 'rU') as yaml_config:
@@ -535,6 +642,8 @@ def read_yaml(file_path, config_file):
             rename = obj_config.get('rename', rename)
             generator.implements = obj_config.get('implement', [])
             generator.transient.extend(obj_config.get('transient', []))
+            generator.extends = obj_config.get('extends', generator.extends)
+            generator.constructors = obj_config.get('constructors', generator.constructors)
             for prop in ['do_json_writer', 'serializables', 'json_blacklist', 'default_values', 'imports', 'package']:
                 if prop in obj_config:
                     setattr(generator, prop, obj_config[prop])
@@ -607,9 +716,10 @@ If destination is a file, your class will be written to that file."""
     destination = args.destination
 
     # If both source and destination are directories, run in
-    # fake make mode
+    # fake make mode 
     if (os.path.isdir(source) and os.path.isdir(destination)):
         for sourcefile in [sourcefile for sourcefile in os.listdir(source) if sourcefile.endswith(".json")]:
+            print "Using source and target directories is deprecated. Write a makefile (see example app)."
             print "decoding ", sourcefile
             generate_class(os.path.join(source, sourcefile), destination)
     else:

@@ -11,7 +11,7 @@ import org.json.JSONObject;
  *    DO NOT MODIFY THIS FILE MANUALLY! IT WILL BE OVERWRITTEN THE NEXT TIME
  *    _Location's PARCELABLE DESCRIPTION IS CHANGED.
  */
-/* package */ abstract class _Location implements Parcelable {
+/* package */ abstract class _Location extends Object implements Parcelable {
 
 	protected List<String> mAddress;
 	protected List<String> mDisplayAddress;
@@ -47,36 +47,91 @@ import org.json.JSONObject;
 	public List<String> getAddress() {
 		 return mAddress;
 	}
+	public void setAddress(List<String> address) {
+		 this.mAddress = address;
+	}
+
+
 	public List<String> getDisplayAddress() {
 		 return mDisplayAddress;
 	}
+	public void setDisplayAddress(List<String> displayAddress) {
+		 this.mDisplayAddress = displayAddress;
+	}
+
+
 	public List<String> getNeighborhoods() {
 		 return mNeighborhoods;
 	}
+	public void setNeighborhoods(List<String> neighborhoods) {
+		 this.mNeighborhoods = neighborhoods;
+	}
+
+
 	public String getCity() {
 		 return mCity;
 	}
+	public void setCity(String city) {
+		 this.mCity = city;
+	}
+
+
 	public String getStateCode() {
 		 return mStateCode;
 	}
+	public void setStateCode(String stateCode) {
+		 this.mStateCode = stateCode;
+	}
+
+
 	public String getPostalCode() {
 		 return mPostalCode;
 	}
+	public void setPostalCode(String postalCode) {
+		 this.mPostalCode = postalCode;
+	}
+
+
 	public String getCountryCode() {
 		 return mCountryCode;
 	}
+	public void setCountryCode(String countryCode) {
+		 this.mCountryCode = countryCode;
+	}
+
+
 	public String getCrossStreets() {
 		 return mCrossStreets;
 	}
+	public void setCrossStreets(String crossStreets) {
+		 this.mCrossStreets = crossStreets;
+	}
+
+
 	public double getLatitude() {
 		 return mLatitude;
 	}
+	public void setLatitude(double latitude) {
+		 this.mLatitude = latitude;
+	}
+
+
 	public double getLongitude() {
 		 return mLongitude;
 	}
+	public void setLongitude(double longitude) {
+		 this.mLongitude = longitude;
+	}
+
+
 	public double getGeoAccuracy() {
 		 return mGeoAccuracy;
 	}
+	public void setGeoAccuracy(double geoAccuracy) {
+		 this.mGeoAccuracy = geoAccuracy;
+	}
+
+
 
 
 	public int describeContents() {
@@ -87,11 +142,11 @@ import org.json.JSONObject;
 		parcel.writeStringList(mAddress);
 		parcel.writeStringList(mDisplayAddress);
 		parcel.writeStringList(mNeighborhoods);
-		parcel.writeString(mCity);
-		parcel.writeString(mStateCode);
-		parcel.writeString(mPostalCode);
-		parcel.writeString(mCountryCode);
-		parcel.writeString(mCrossStreets);
+		parcel.writeValue(mCity);
+		parcel.writeValue(mStateCode);
+		parcel.writeValue(mPostalCode);
+		parcel.writeValue(mCountryCode);
+		parcel.writeValue(mCrossStreets);
 		parcel.writeDouble(mLatitude);
 		parcel.writeDouble(mLongitude);
 		parcel.writeDouble(mGeoAccuracy);
@@ -101,11 +156,11 @@ import org.json.JSONObject;
 		mAddress = source.createStringArrayList();
 		mDisplayAddress = source.createStringArrayList();
 		mNeighborhoods = source.createStringArrayList();
-		mCity = source.readString();
-		mStateCode = source.readString();
-		mPostalCode = source.readString();
-		mCountryCode = source.readString();
-		mCrossStreets = source.readString();
+		mCity = (String) source.readValue(String.class.getClassLoader());
+		mStateCode = (String) source.readValue(String.class.getClassLoader());
+		mPostalCode = (String) source.readValue(String.class.getClassLoader());
+		mCountryCode = (String) source.readValue(String.class.getClassLoader());
+		mCrossStreets = (String) source.readValue(String.class.getClassLoader());
 		mLatitude = source.readDouble();
 		mLongitude = source.readDouble();
 		mGeoAccuracy = source.readDouble();

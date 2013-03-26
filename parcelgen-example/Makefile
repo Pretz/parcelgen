@@ -20,3 +20,4 @@ $(DIR):
 
 clean:
 	rm -f $(DEST)
+	rm -f $(DEST_YAML)
