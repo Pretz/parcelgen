@@ -2,6 +2,7 @@
 
 import sys, re, os.path, json
 import argparse
+from contextlib import contextmanager
 import yaml
 from collections import defaultdict
 
@@ -28,7 +29,7 @@ class ObjectProperty(object):
 
 class ParcelGen:
     BASE_IMPORTS = ("android.os.Parcel", "android.os.Parcelable")
-    CLASS_STR = "/* package */ abstract class %s extends %s implements %s {"
+    CLASS_STR = "/* package */ abstract class %s extends %s implements %s"
     CHILD_CLASS_STR = "public class {0} extends _{0} {{"
     NATIVE_TYPES = ["string", "byte", "double", "float", "int", "long", "boolean"]
     NATIVE_OBJECTS = ["String", "Byte", "Double", "Float", "Integer", "Long", "Boolean"]
@@ -55,8 +56,25 @@ class ParcelGen:
         self.implements = []
         self.from_yaml = False
 
-    def tabify(self, string):
+    def tabify(self, string=''):
+        if not string:
+            return ''
         return ("\t" * self.tablevel) + string
+
+    @contextmanager
+    def indent(self):
+        self.uptab()
+        yield
+        self.downtab()
+
+    @contextmanager
+    def block(self, statement='', newline_after=True):
+        self.printtab("%s {" % statement)
+        with self.indent():
+            yield
+        self.printtab('}')
+        if newline_after:
+            self.output()
 
     def printtab(self, string):
         self.output(self.tabify(string))
@@ -250,8 +268,16 @@ class ParcelGen:
 
     def print_gen(self, class_name):
         self.tablevel = 0
+        for line in self.generate_class(class_name):
+            # TODO: Make this a nice regex
+            if line and not (line.endswith(';') or line.endswith('{') or 
+                line.endswith('\n') or line.startswith('/*') or line.startswith(' *')):
+                line += ';'
+            self.printtab(line)
+
+    def generate_class(self, class_name):
         # Imports and open class definition
-        self.printtab("package %s;\n" % self.package)
+        yield "package %s;\n" % self.package
         imports = set(tuple(self.imports) + self.BASE_IMPORTS)
         for prop in self.props.keys():
             if prop.startswith("List"):
@@ -273,129 +299,110 @@ class ParcelGen:
         imports.sort()
 
         for imp in imports:
-            self.printtab("import %s;" % imp)
+            yield "import %s;" % imp
 
         self.output("")
-        self.printtab("/** Automatically generated Parcelable implementation for %s." % class_name)
-        self.printtab(" *    DO NOT MODIFY THIS FILE MANUALLY! IT WILL BE OVERWRITTEN THE NEXT TIME")
-        self.printtab(" *    %s's PARCELABLE DESCRIPTION IS CHANGED." % class_name)
-        self.printtab(" */")
+        yield "/** Automatically generated Parcelable implementation for %s." % class_name
+        yield " *    DO NOT MODIFY THIS FILE MANUALLY! IT WILL BE OVERWRITTEN THE NEXT TIME"
+        yield " *    %s's PARCELABLE DESCRIPTION IS CHANGED." % class_name
+        yield " */"
 
         implements = ", ".join(['Parcelable'] + self.implements)
-        self.printtab((self.CLASS_STR % (class_name, self.extends, implements)) + "\n")
-
-        # Protected member variables
-        self.uptab()
-        for typ, member in self.member_map():
-            if member in self.transient:
-                typ = "transient " + typ
-            self.printtab("protected %s %s;" % (typ, self.memberize(member)))
-        self.output("")
-
-        #If the user didn't define any constructors, put in parameterized and empty constructors
-        if not self.constructors:
-            # Parameterized Constructor
-            constructor = "protected %s(" % class_name
-            params = []
+        with self.block(self.CLASS_STR % (class_name, self.extends, implements), newline_after=False):
+            yield
+            # Protected member variables
             for typ, member in self.member_map():
-                params.append("%s %s" % (typ, member))
-            constructor += "%s) {" % ", ".join(params)
-            self.printtab(constructor)
-            self.uptab()
-            self.printtab("this();")
-            for typ, member in self.member_map():
-                self.printtab("%s = %s;" % (self.memberize(member), member))
-            self.tablevel -= 1
-            self.printtab("}\n")
-            
-            # Empty constructor for Parcelable
-            self.printtab("protected %s() {" % class_name)
-            self.uptab()
-            self.printtab("super();")
-            self.downtab()
-            self.printtab("}\n")
+                if member in self.transient:
+                    typ = "transient " + typ
+                yield "protected %s %s;" % (typ, self.memberize(member))
+            yield
 
-        # User-defined constructors
-        for c in self.constructors:
-            constructor = "protected %s(" % class_name
-            params = []
-            values = []
-            
-            for item in c["args"]:
-                params.append("%s %s" % (item[0], item[1]))
-                values.append(item[1])
+            #If the user didn't define any constructors, put in parameterized and empty constructors
+            if not self.constructors:
+                # Parameterized Constructor
+                constructor = "protected %s(" % class_name
+                params = []
+                for typ, member in self.member_map():
+                    params.append("%s %s" % (typ, member))
+                constructor += "%s)" % ", ".join(params)
+                with self.block(constructor):
+                    yield "this();"
+                    for typ, member in self.member_map():
+                        yield "%s = %s;" % (self.memberize(member), member)
                 
-            if c.get("throws", None):
-                constructor += "%s) throws %s {" %(", ".join(params), ", ".join(c.get("throws")))
-            else:
-                constructor += "%s) {" % (", ".join(params))
+                # Empty constructor for Parcelable
+                with self.block("protected %s()" % class_name):
+                    yield "super();"
+
+            # User-defined constructors
+            for c in self.constructors:
+                constructor = "protected %s(" % class_name
+                params = []
+                values = []
+                
+                for item in c["args"]:
+                    params.append("%s %s" % (item[0], item[1]))
+                    values.append(item[1])
+                    
+                if c.get("throws", None):
+                    constructor += "%s) throws %s" %(", ".join(params), ", ".join(c.get("throws")))
+                else:
+                    constructor += "%s)" % (", ".join(params))
+                
+                with self.block(constructor):
+                    yield "super(%s)" % ", ".join(values)
+        
+            # Getters for member variables
+            for typ, member in self.member_map():
+                self.output(self.gen_getter(typ, member))
+                yield
+                self.output(self.gen_setter(typ, member))
+                yield
+            yield
+
+            # Parcelable writeToParcel
+            with self.block("public int describeContents()"):
+                yield 'return 0'
             
-            self.printtab(constructor)
-            self.uptab()        
-            self.printtab("super(%s);" % ", ".join(values))
-            self.downtab()
-            self.printtab("}\n")
-    
-        # Getters for member variables
-        for typ, member in self.member_map():
-            self.output(self.gen_getter(typ, member))
-            self.output(self.gen_setter(typ, member))
-            self.output("\n")
-        self.output("\n")
+            with self.block("public void writeToParcel(Parcel parcel, int flags)"):
+                self.output(self.gen_parcelable())
 
-        # Parcelable writeToParcel
-        self.printtab("public int describeContents() {\n\t\treturn 0;\n\t}")
-        self.output("")
-        self.printtab("public void writeToParcel(Parcel parcel, int flags) {")
-        self.uptab()
-        self.output(self.gen_parcelable())
-        self.downtab()
-        self.printtab("}\n")
-
-        # readFromParcel that allows subclasses to use parcelable-ness of their superclass
-        self.printtab("public void readFromParcel(Parcel source) {")
-        self.tablevel += 1
-        i = 0
-        all_members = []
-        if self.extends != "Object":
-            self.printtab("super.readFromParcel(source);")
-        for typ in self.get_types():
-            if typ == "boolean":
-                self.printtab("boolean[] bools = source.createBooleanArray();")
-                for j in xrange(len(self.props[typ])):
-                    self.printtab("%s = bools[%d];" % (self.memberize(self.props[typ][j]), j))
-            else:
-                for member in self.props[typ]:
-                    memberized = self.memberize(member)
-                    list_gen = self.gen_list_unparcel(typ, memberized)
-                    if list_gen:
-                        self.output(list_gen)
-                    elif typ == "Date":
-                        self.printtab("long date%d = source.readLong();" % i)
-                        self.printtab("if (date%d != Integer.MIN_VALUE) {" % i)
-                        self.uptab()
-                        self.printtab("%s = new Date(date%d);" % (memberized, i))
-                        self.downtab()
-                        self.printtab("}")
-                        i += 1
-                    elif typ in self.NATIVE_TYPES:
-                        self.printtab("%s = source.read%s();" % (memberized, typ.capitalize()))
-                    elif typ in self.NATIVE_OBJECTS:
-                        self.printtab("%s = (%s) source.readValue(%s.class.getClassLoader());" % (memberized, typ, typ))
-                    elif typ in self.serializables:
-                        self.printtab("%s = (%s)source.readSerializable();" % (memberized, typ))
+            # readFromParcel that allows subclasses to use parcelable-ness of their superclass
+            with self.block("public void readFromParcel(Parcel source)"):
+                i = 0
+                all_members = []
+                if self.extends != "Object":
+                    yield "super.readFromParcel(source)"
+                for typ in self.get_types():
+                    if typ == "boolean":
+                        yield "boolean[] bools = source.createBooleanArray()"
+                        for j in xrange(len(self.props[typ])):
+                            yield "%s = bools[%d]" % (self.memberize(self.props[typ][j]), j)
                     else:
-                        self.printtab("%s = source.readParcelable(%s.class.getClassLoader());" % (memberized, typ))
-        self.tablevel -= 1
-        self.printtab("}\n")
-#       self.print_creator(class_name, "Parcelable.Creator")
+                        for member in self.props[typ]:
+                            memberized = self.memberize(member)
+                            list_gen = self.gen_list_unparcel(typ, memberized)
+                            if list_gen:
+                                self.output(list_gen)
+                            elif typ == "Date":
+                                yield "long date%d = source.readLong()" % i
+                                with self.block("if (date%d != Integer.MIN_VALUE)" % i):
+                                    yield "%s = new Date(date%d)" % (memberized, i)
+                                    i += 1
+                            elif typ in self.NATIVE_TYPES:
+                                yield "%s = source.read%s()" % (memberized, typ.capitalize())
+                            elif typ in self.NATIVE_OBJECTS:
+                                yield "%s = (%s) source.readValue(%s.class.getClassLoader())" % (memberized, typ, typ)
+                            elif typ in self.serializables:
+                                yield "%s = (%s)source.readSerializable()" % (memberized, typ)
+                            else:
+                                yield "%s = source.readParcelable(%s.class.getClassLoader())" % (memberized, typ)
+    #       self.print_creator(class_name, "Parcelable.Creator")
 
-        if self.do_json:
-            self.output(self.generate_json_reader(self.props))
-        if self.do_json_writer:
-            self.output(self.generate_json_writer(self.props))
-        self.downtab()
-        self.printtab("}")
+            if self.do_json:
+                self.output(self.generate_json_reader(self.props))
+            if self.do_json_writer:
+                self.output(self.generate_json_writer(self.props))
 
     def generate_json_reader(self, props):
         self.props = props

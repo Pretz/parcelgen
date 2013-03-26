@@ -47,91 +47,90 @@ import org.json.JSONObject;
 	public List<String> getAddress() {
 		 return mAddress;
 	}
+
 	public void setAddress(List<String> address) {
 		 this.mAddress = address;
 	}
 
-
 	public List<String> getDisplayAddress() {
 		 return mDisplayAddress;
 	}
+
 	public void setDisplayAddress(List<String> displayAddress) {
 		 this.mDisplayAddress = displayAddress;
 	}
 
-
 	public List<String> getNeighborhoods() {
 		 return mNeighborhoods;
 	}
+
 	public void setNeighborhoods(List<String> neighborhoods) {
 		 this.mNeighborhoods = neighborhoods;
 	}
 
-
 	public String getCity() {
 		 return mCity;
 	}
+
 	public void setCity(String city) {
 		 this.mCity = city;
 	}
 
-
 	public String getStateCode() {
 		 return mStateCode;
 	}
+
 	public void setStateCode(String stateCode) {
 		 this.mStateCode = stateCode;
 	}
 
-
 	public String getPostalCode() {
 		 return mPostalCode;
 	}
+
 	public void setPostalCode(String postalCode) {
 		 this.mPostalCode = postalCode;
 	}
 
-
 	public String getCountryCode() {
 		 return mCountryCode;
 	}
+
 	public void setCountryCode(String countryCode) {
 		 this.mCountryCode = countryCode;
 	}
 
-
 	public String getCrossStreets() {
 		 return mCrossStreets;
 	}
+
 	public void setCrossStreets(String crossStreets) {
 		 this.mCrossStreets = crossStreets;
 	}
 
-
 	public double getLatitude() {
 		 return mLatitude;
 	}
+
 	public void setLatitude(double latitude) {
 		 this.mLatitude = latitude;
 	}
 
-
 	public double getLongitude() {
 		 return mLongitude;
 	}
+
 	public void setLongitude(double longitude) {
 		 this.mLongitude = longitude;
 	}
 
-
 	public double getGeoAccuracy() {
 		 return mGeoAccuracy;
 	}
+
 	public void setGeoAccuracy(double geoAccuracy) {
 		 this.mGeoAccuracy = geoAccuracy;
 	}
-
-
 
 
 	public int describeContents() {

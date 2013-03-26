@@ -55,123 +55,122 @@ import org.json.JSONObject;
 	public Location getLocation() {
 		 return mLocation;
 	}
+
 	public void setLocation(Location location) {
 		 this.mLocation = location;
 	}
 
-
 	public String getId() {
 		 return mId;
 	}
+
 	public void setId(String id) {
 		 this.mId = id;
 	}
 
-
 	public String getName() {
 		 return mName;
 	}
+
 	public void setName(String name) {
 		 this.mName = name;
 	}
 
-
 	public String getImageUrl() {
 		 return mImageUrl;
 	}
+
 	public void setImageUrl(String imageUrl) {
 		 this.mImageUrl = imageUrl;
 	}
 
-
 	public String getPhone() {
 		 return mPhone;
 	}
+
 	public void setPhone(String phone) {
 		 this.mPhone = phone;
 	}
 
-
 	public String getDisplayPhone() {
 		 return mDisplayPhone;
 	}
+
 	public void setDisplayPhone(String displayPhone) {
 		 this.mDisplayPhone = displayPhone;
 	}
 
-
 	public String getRatingImageUrl() {
 		 return mRatingImageUrl;
 	}
+
 	public void setRatingImageUrl(String ratingImageUrl) {
 		 this.mRatingImageUrl = ratingImageUrl;
 	}
 
-
 	public String getRatingImageUrlSmall() {
 		 return mRatingImageUrlSmall;
 	}
+
 	public void setRatingImageUrlSmall(String ratingImageUrlSmall) {
 		 this.mRatingImageUrlSmall = ratingImageUrlSmall;
 	}
 
-
 	public String getSnippetText() {
 		 return mSnippetText;
 	}
+
 	public void setSnippetText(String snippetText) {
 		 this.mSnippetText = snippetText;
 	}
 
-
 	public String getSnippetImageUrl() {
 		 return mSnippetImageUrl;
 	}
+
 	public void setSnippetImageUrl(String snippetImageUrl) {
 		 this.mSnippetImageUrl = snippetImageUrl;
 	}
 
-
 	public Uri getUri() {
 		 return mUri;
 	}
+
 	public void setUri(Uri uri) {
 		 this.mUri = uri;
 	}
 
-
 	public Uri getMobileUri() {
 		 return mMobileUri;
 	}
+
 	public void setMobileUri(Uri mobileUri) {
 		 this.mMobileUri = mobileUri;
 	}
 
-
 	public double getDistance() {
 		 return mDistance;
 	}
+
 	public void setDistance(double distance) {
 		 this.mDistance = distance;
 	}
 
-
 	public double getRating() {
 		 return mRating;
 	}
+
 	public void setRating(double rating) {
 		 this.mRating = rating;
 	}
 
-
 	public int getReviewCount() {
 		 return mReviewCount;
 	}
+
 	public void setReviewCount(int reviewCount) {
 		 this.mReviewCount = reviewCount;
 	}
-
-
 
 
 	public int describeContents() {
